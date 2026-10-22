@@ -9,6 +9,9 @@
   limits.py login <id>    sign that account in (its own folder, email pre-filled)
   limits.py open <id>     open that account in a new herdr pane, continuing the last chat
   limits.py link <id>     link ~/.claude's shared files into a Claude account's folder
+  limits.py json          every account and its fuel as JSON (orcha's FUEL and accounts popup)
+  limits.py switch <id> <pane>   continue that pane's conversation on another account
+  limits.py login-pane <id>      sign that account in, in a new pane
 
 Accounts come from `accounts` in ~/.config/orcha/config.json.
 Claude: Anthropic's usage endpoint, with the account's own sign-in from the
@@ -415,6 +418,74 @@ def cmd_open(acct):
     subprocess.run(["herdr", "pane", "run", pane, run], capture_output=True)
 
 
+WINDOW_TAGS = {"session": "5H", "weekly": "WEEK", "monthly": "MONTH"}
+
+
+def cmd_json():
+    """[{id, kind, label, email, current, error, windows: [{key, label, left, reset}]}]
+    `left` is the % left of the window; `current` is the focused agent's account
+    (HERDR_ACTIVE_PANE_ID), else the one picked in the picker."""
+    cur = pane_account() or selected()
+    out = []
+    for acct, cfg in ACCOUNTS.items():
+        d = get(acct)
+        windows = []
+        for key, _, _, _ in WINDOWS:
+            if key in d:
+                pct, reset = d[key]
+                windows.append({"key": key, "label": WINDOW_TAGS[key],
+                                "left": max(0, min(100, round(100 - pct))),
+                                "reset": until(reset) if reset else None})
+        out.append({"id": acct, "kind": cfg["kind"], "label": cfg.get("label") or acct,
+                    "email": email(acct), "current": acct == cur,
+                    "error": d.get("error"), "windows": windows})
+    print(json.dumps(out))
+
+
+def cmd_switch(acct, pane):
+    """Stop the agent in `pane` and continue the same conversation there on
+    another account (`--resume <session id>`, shared history)."""
+    cfg = ACCOUNTS[acct]
+    try:
+        got = json.loads(subprocess.run(["herdr", "pane", "get", pane], capture_output=True, text=True,
+                                        timeout=5).stdout)["result"]["pane"]
+    except Exception:
+        sys.exit(T["lim_open_failed"])
+    session = (got.get("agent_session") or {}).get("value")
+    kind = cfg["kind"]
+    d = o.claude_dir(cfg) if kind == "claude" else None
+    if d:
+        link_shared(d)
+    if kind == "claude":
+        env = f"env CLAUDE_CONFIG_DIR={d}" if d else "env -u CLAUDE_CONFIG_DIR"
+        run = f"{env} claude --resume {session}" if session else f"{env} claude --continue"
+    elif kind == "codex":
+        run = f"codex resume {session}" if session else "codex resume --last"
+    else:
+        run = "cursor-agent resume"
+    # Ctrl+C twice leaves Claude Code and Codex; then the shell runs the resume
+    for _ in range(2):
+        subprocess.run(["herdr", "pane", "send-keys", pane, "ctrl+c"], capture_output=True)
+        time.sleep(0.4)
+    time.sleep(1.0)
+    subprocess.run(["herdr", "pane", "run", pane, run], capture_output=True)
+    cmd_select(acct)
+
+
+def cmd_login_pane(acct):
+    """`login` in a new pane next to the focused one (orcha's SIGN IN)."""
+    pane = os.environ.get("HERDR_ACTIVE_PANE_ID")
+    split = ["herdr", "pane", "split", "--direction", "right"]
+    split += ["--pane", pane] if pane else ["--current"]
+    out = subprocess.run(split, capture_output=True, text=True).stdout
+    try:
+        new = json.loads(out)["result"]["pane"]["pane_id"]
+    except Exception:
+        sys.exit(T["lim_open_failed"])
+    me = os.path.realpath(__file__)
+    subprocess.run(["herdr", "pane", "run", new, f"{me} login {acct}"], capture_output=True)
+
+
 def cmd_select(acct):
     os.makedirs(o.CONFIG_DIR, exist_ok=True)
     with open(SELECTED_FILE, "w") as fh:
@@ -430,12 +501,17 @@ def main():
         cmd_short()
     elif cmd == "list":
         cmd_list()
+    elif cmd == "json":
+        cmd_json()
+    elif cmd == "switch" and len(args) > 2 and args[1] in ACCOUNTS:
+        cmd_switch(args[1], args[2])
     elif cmd == "link" and len(args) > 1 and args[1] in ACCOUNTS:
         d = o.claude_dir(ACCOUNTS[args[1]])
         if d:
             link_shared(d)
-    elif cmd in ("show", "select", "login", "open") and len(args) > 1 and args[1] in ACCOUNTS:
-        {"show": cmd_show, "select": cmd_select, "login": cmd_login, "open": cmd_open}[cmd](args[1])
+    elif cmd in ("show", "select", "login", "login-pane", "open") and len(args) > 1 and args[1] in ACCOUNTS:
+        {"show": cmd_show, "select": cmd_select, "login": cmd_login, "login-pane": cmd_login_pane,
+         "open": cmd_open}[cmd](args[1])
     else:
         sys.exit(__doc__)
 

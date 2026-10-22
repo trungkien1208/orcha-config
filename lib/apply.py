@@ -326,6 +326,8 @@ def claude_hooks():
         "Stop": [(None, f"{H}/orcha-check.sh stop", 300)],
         # the station of the agent's train in the orcha sidebar
         "UserPromptSubmit": [(None, f"{H}/orcha-stage.sh", 5)],
+        # the train's name: the model the session runs
+        "SessionStart": [(None, f"{H}/orcha-stage.sh", 5)],
     }
     want["PreToolUse"].append(("*", f"{H}/orcha-stage.sh", 5))
     try:
@@ -352,6 +354,34 @@ def claude_hooks():
             kept.append(group)
         hooks[event] = kept
     write(CLAUDE_SETTINGS, json.dumps(settings, indent=2, ensure_ascii=False) + "\n")
+    return None
+
+
+CODEX_HOOKS = os.path.join(o.HOME, ".codex", "hooks.json")
+
+
+def codex_hooks():
+    """The orcha stage hook for Codex (~/.codex/hooks.json, same format as
+    Claude Code's): the station and model of its train in the sidebar."""
+    if not os.path.isdir(os.path.join(o.HOME, ".codex")):
+        return None
+    H = os.path.join(o.ORCHA_HOME, "claude", "hooks")
+    try:
+        with open(CODEX_HOOKS) as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        data = {}
+    except ValueError:
+        return "~/.codex/hooks.json is not valid JSON: Codex hooks skipped"
+    if os.path.exists(CODEX_HOOKS) and not os.path.exists(CODEX_HOOKS + ".pre-orcha"):
+        shutil.copy2(CODEX_HOOKS, CODEX_HOOKS + ".pre-orcha")
+    hooks = data.setdefault("hooks", {})
+    for event in ("SessionStart", "UserPromptSubmit", "PreToolUse"):
+        kept = [g for g in hooks.get(event, [])
+                if not any("/claude/hooks/orcha-" in h.get("command", "") for h in g.get("hooks", []))]
+        kept.append({"hooks": [{"type": "command", "command": f"{H}/orcha-stage.sh", "timeout": 5}]})
+        hooks[event] = kept
+    write(CODEX_HOOKS, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
     return None
 
 
@@ -402,6 +432,21 @@ def remove_claude_hooks():
 
 # ---------- all of it
 
+def link_scripts():
+    """~/.config/orcha/scripts -> this checkout's scripts: the stable path the
+    orcha app calls (accounts, switch, hand-off) wherever orcha-config lives."""
+    link = os.path.join(o.CONFIG_DIR, "scripts")
+    target = os.path.join(o.ORCHA_HOME, "scripts")
+    if os.path.islink(link) and os.path.realpath(link) == target:
+        return
+    if os.path.lexists(link):
+        if not os.path.islink(link):
+            return  # a real folder the user made: leave it
+        os.remove(link)
+    os.makedirs(o.CONFIG_DIR, exist_ok=True)
+    os.symlink(target, link)
+
+
 def apply(quiet=False):
     cfg = o.load_config()
     p = o.palette(cfg)
@@ -410,6 +455,7 @@ def apply(quiet=False):
 
     write(os.path.join(o.GEN_DIR, "env.sh"), env_sh(cfg, p, t))
     write(os.path.join(o.GEN_DIR, "plugin.json"), plugin_json(cfg, p, t))
+    link_scripts()
     write(os.path.join(GHOSTTY_DIR, "themes", "orcha"), ghostty_theme(p))
     write(os.path.join(GHOSTTY_DIR, "orcha.ghostty"), ghostty_conf(cfg, p))
     write(os.path.join(GHOSTTY_DIR, "shaders", "orcha-trail.glsl"), shader(p))
@@ -424,6 +470,7 @@ def apply(quiet=False):
     if cfg["widgets"]["sounds"]:
         notes.append(sounds())
     notes.append(claude_hooks())
+    notes.append(codex_hooks())
     if os.path.isdir(os.path.join(o.HOME, ".claude")):
         # with the "default" palette Claude keeps its own colors too
         claude_theme(cfg["widgets"]["claude_colors"] and not p.get("native"))

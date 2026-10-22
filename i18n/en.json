@@ -239,7 +239,7 @@
  "s_mode": "How much to set up?",
  "s_quick": "Quick: pick colors, orcha finds the rest (recommended)",
  "s_custom": "Custom: also editor, usage, Azure DevOps, widgets",
- "s_install_tools": "Install what orcha needs with Homebrew? ({tools})",
+ "s_install_tools": "orcha needs a few tools. Install them with Homebrew? ({tools})",
  "s_need_brew": "Some tools are missing. Install Homebrew (https://brew.sh), then run orcha setup again.",
  "s_git_none": "No, I don't use one",
  "s_usage": "Show plan usage in the header?",
@@ -293,5 +293,9 @@
  "m_uninstall_hint": "your old Ghostty / herdr / Claude configs come back",
  "s_font": "Font",
  "s_font_size": "Font size",
- "k_settings": "orcha settings (Cmd+,)"
+ "k_settings": "orcha settings (Cmd+,)",
+ "s_ghostty": "Ghostty is not installed",
+ "s_ghostty_hint": "orcha works in any terminal; Ghostty adds Cmd shortcuts, logos, theme and cursor trail",
+ "s_ghostty_install": "Install Ghostty (recommended)",
+ "s_ghostty_keep": "Keep my terminal (shortcuts: Ctrl+B then a key)"
 }

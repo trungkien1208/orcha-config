@@ -239,7 +239,7 @@
  "s_mode": "Cài đặt tới đâu?",
  "s_quick": "Nhanh: chọn màu, orcha tự lo phần còn lại (khuyên dùng)",
  "s_custom": "Tuỳ chỉnh: thêm editor, usage, Azure DevOps, widget",
- "s_install_tools": "Cài những thứ orcha cần bằng Homebrew? ({tools})",
+ "s_install_tools": "orcha cần vài tool. Cài bằng Homebrew? ({tools})",
  "s_need_brew": "Còn thiếu vài tool. Cài Homebrew (https://brew.sh) rồi chạy lại orcha setup.",
  "s_git_none": "Không, tôi không dùng",
  "s_usage": "Hiện usage của gói trên header?",
@@ -293,5 +293,9 @@
  "m_uninstall_hint": "config Ghostty / Herdr / Claude cũ của bạn sẽ được trả lại",
  "s_font": "Font",
  "s_font_size": "Cỡ chữ",
- "k_settings": "cài đặt orcha (Cmd+,)"
+ "k_settings": "cài đặt orcha (Cmd+,)",
+ "s_ghostty": "Chưa có Ghostty",
+ "s_ghostty_hint": "orcha chạy được trong mọi terminal; Ghostty có thêm phím Cmd, logo, theme và vệt sáng con trỏ",
+ "s_ghostty_install": "Cài Ghostty (khuyên dùng)",
+ "s_ghostty_keep": "Giữ terminal của tôi (phím tắt: Ctrl+B rồi phím)"
 }

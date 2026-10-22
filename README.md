@@ -58,6 +58,8 @@ This puts orcha in `~/.orcha` and starts the setup. If you would rather clone it
 git clone https://github.com/trungkien1208/orcha ~/.orcha && ~/.orcha/bin/orcha setup
 ```
 
+Ghostty is optional. herdr and orcha run in any terminal (iTerm2, Terminal, WezTerm, Kitty...), and setup offers to install Ghostty if you don't have it. Without Ghostty, the `Cmd` shortcuts become `Ctrl+B` and then a key (`Ctrl+B f` to find a file, `Ctrl+B d` for changes, `Ctrl+B ,` for settings). The theme, font, cursor trail and the real agent logos come only with Ghostty.
+
 Setup asks three or four things: your language, **Quick** or **Custom**, a color palette (with a live preview) and the git app you use, if any. orcha finds the rest on your machine by itself:
 
 - the coding agents you have installed (Claude Code, Codex, Cursor, Gemini, OpenCode, Amp, Droid, Copilot, Aider, Qwen, Goose, Crush)

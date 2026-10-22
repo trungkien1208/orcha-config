@@ -73,10 +73,37 @@ def say(text, color="accent", bold=False):
 # ---------- what is on this machine
 
 def missing_tools():
-    out = [brew for cmd, brew in TOOLS if not shutil.which(cmd)]
-    if not o.app_installed("Ghostty"):
-        out.append("--cask ghostty")
-    return out
+    return [brew for cmd, brew in TOOLS if not shutil.which(cmd)]
+
+
+def ensure_tools():
+    """Before any menu: the menus are fzf, so a missing fzf is asked about in
+    plain text. One question, Enter installs everything missing."""
+    missing = missing_tools()
+    if not missing:
+        return True
+    if not shutil.which("brew"):
+        print(f"\n  {T['s_need_brew']}\n")
+        return False
+    print(f"\n  🐋🍵 {T['s_install_tools'].format(tools=', '.join(missing))}")
+    try:
+        answer = input(f"  [{T['s_yes']}/{T['s_no'].lower()}] (Enter = {T['s_yes']}): ").strip().lower()
+    except EOFError:
+        answer = ""
+    if answer and not answer.startswith(("y", "c")):  # yes / có
+        return shutil.which("fzf") is not None
+    subprocess.run(["brew", "install", *missing])
+    return shutil.which("fzf") is not None
+
+
+def ask_ghostty():
+    """Ghostty is optional: herdr runs in any terminal. Without it there are no
+    Cmd shortcuts (Ctrl+B + key instead), no orcha theme / font / cursor trail."""
+    if o.app_installed("Ghostty") or not shutil.which("brew"):
+        return
+    rows = [("install", "👻  " + T["s_ghostty_install"]), ("keep", "🖥   " + T["s_ghostty_keep"])]
+    if menu(T["s_ghostty"], rows, T["s_ghostty_hint"]) == "install":
+        subprocess.run(["brew", "install", "--cask", "ghostty"])
 
 
 def installed_agents():
@@ -391,20 +418,12 @@ def main():
     global T
     cfg = o.load_config()
     T = o.strings(cfg["lang"])
+    if not ensure_tools():
+        sys.exit(1)
     ask_lang(cfg)
     T = o.strings(cfg["lang"])
 
-    missing = missing_tools()
-    if missing and shutil.which("brew"):
-        if yes_no(T["s_install_tools"].format(tools=", ".join(m.split()[-1] for m in missing))):
-            casks = [m.split()[-1] for m in missing if m.startswith("--cask")]
-            formulas = [m for m in missing if not m.startswith("--cask")]
-            if formulas:
-                subprocess.run(["brew", "install", *formulas])
-            if casks:
-                subprocess.run(["brew", "install", "--cask", *casks])
-    elif missing:
-        say(T["s_need_brew"], "yellow")
+    ask_ghostty()
 
     is_custom = menu(T["s_mode"], [("quick", "⚡  " + T["s_quick"]), ("custom", "🎨  " + T["s_custom"])]) == "custom"
     ask_palette(cfg)

@@ -324,7 +324,10 @@ def claude_hooks():
         "PostToolUse": [("Edit|Write|MultiEdit|NotebookEdit", f"{H}/orcha-check.sh mark", None),
                         ("Bash|Edit|Write|MultiEdit|NotebookEdit", f"{H}/orcha-guard.sh post", None)],
         "Stop": [(None, f"{H}/orcha-check.sh stop", 300)],
+        # the station of the agent's train in the orcha sidebar
+        "UserPromptSubmit": [(None, f"{H}/orcha-stage.sh", 5)],
     }
+    want["PreToolUse"].append(("*", f"{H}/orcha-stage.sh", 5))
     try:
         with open(CLAUDE_SETTINGS) as fh:
             settings = json.load(fh)

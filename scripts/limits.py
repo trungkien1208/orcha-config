@@ -12,6 +12,7 @@
   limits.py json          every account and its fuel as JSON (orcha's FUEL and accounts popup)
   limits.py switch <id> <pane>   continue that pane's conversation on another account
   limits.py login-pane <id>      sign that account in, in a new pane
+  limits.py new <id> <workspace> <cwd>   start that account's agent in a new tab
 
 Accounts come from `accounts` in ~/.config/orcha/config.json.
 Claude: Anthropic's usage endpoint, with the account's own sign-in from the
@@ -486,6 +487,45 @@ def cmd_login_pane(acct):
     subprocess.run(["herdr", "pane", "run", new, f"{me} login {acct}"], capture_output=True)
 
 
+def first_pane_id(obj):
+    """The first pane id anywhere in a herdr JSON result."""
+    if isinstance(obj, dict):
+        if isinstance(obj.get("pane_id"), str):
+            return obj["pane_id"]
+        values = obj.values()
+    elif isinstance(obj, list):
+        values = obj
+    else:
+        return None
+    for value in values:
+        found = first_pane_id(value)
+        if found:
+            return found
+    return None
+
+
+def cmd_new(acct, workspace, cwd):
+    """orcha's NEW: a new tab in the project, running this account's agent."""
+    cfg = ACCOUNTS[acct]
+    kind = cfg["kind"]
+    create = ["herdr", "tab", "create", "--workspace", workspace, "--cwd", cwd,
+              "--label", cfg.get("label") or acct, "--focus"]
+    d = o.claude_dir(cfg) if kind == "claude" else None
+    if d:
+        link_shared(d)
+        create += ["--env", f"CLAUDE_CONFIG_DIR={d}"]
+    out = subprocess.run(create, capture_output=True, text=True).stdout
+    try:
+        pane = first_pane_id(json.loads(out)["result"])
+    except Exception:
+        pane = None
+    if not pane:
+        sys.exit(T["lim_open_failed"] + ": " + out[:200])
+    run = {"claude": "claude", "codex": "codex", "cursor": "cursor-agent"}[kind]
+    subprocess.run(["herdr", "pane", "run", pane, run], capture_output=True)
+    cmd_select(acct)
+
+
 def cmd_select(acct):
     os.makedirs(o.CONFIG_DIR, exist_ok=True)
     with open(SELECTED_FILE, "w") as fh:
@@ -503,6 +543,8 @@ def main():
         cmd_list()
     elif cmd == "json":
         cmd_json()
+    elif cmd == "new" and len(args) > 3 and args[1] in ACCOUNTS:
+        cmd_new(args[1], args[2], args[3])
     elif cmd == "switch" and len(args) > 2 and args[1] in ACCOUNTS:
         cmd_switch(args[1], args[2])
     elif cmd == "link" and len(args) > 1 and args[1] in ACCOUNTS:

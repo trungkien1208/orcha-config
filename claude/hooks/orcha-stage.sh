@@ -27,6 +27,17 @@ case $event in
       [ -f "$transcript" ] && model=$(tail -n 400 "$transcript" | grep -o '"model":"[a-z0-9.-]*' | tail -1 | cut -d'"' -f4)
     fi
     [ -n "$model" ] && herdr pane report-metadata "$HERDR_PANE_ID" --source orcha-model --token "model=$model" >/dev/null 2>&1 &
+    # a Claude session on another account comes back on that account after a
+    # restart: report the resume command with its CLAUDE_CONFIG_DIR
+    session=$(printf '%s' "$input" | jq -r '.session_id // ""')
+    case $transcript in */.codex/*) ;; *)
+      if [ "$event" = SessionStart ] && [ -n "${CLAUDE_CONFIG_DIR:-}" ] && [ -n "$session" ]; then
+        # herdr keeps a resume command only from the integration that holds the
+        # pane (herdr:claude), after its own session report: wait for that first
+        ( sleep 3; herdr pane report-agent-session "$HERDR_PANE_ID" --source herdr:claude --agent claude \
+          --agent-session-id "$session" -- env "CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR" claude --resume "$session" ) >/dev/null 2>&1 &
+      fi ;;
+    esac
     ;;
   PreToolUse)
     case $tool in

@@ -55,7 +55,8 @@ ws() {  # <dir> <label>: a workspace, its first pane's id printed
 p1=$(ws "$D/matcha-house" matcha-house)
 [ -n "$p1" ] && herdr pane run "$p1" "clear; claude" >/dev/null
 p2=$(herdr pane split "$p1" --direction right --cwd "$D/matcha-house" | jq -r ".result.pane.pane_id")
-herdr pane run "$p2" "clear; codex" >/dev/null
+# with a prompt: plain `codex` opens its task list, which shows your real projects
+herdr pane run "$p2" 'clear; codex "Explain src/theme.ts in two sentences."' >/dev/null
 p3=$(ws "$D/orca-pay" orca-pay)
 [ -n "$p3" ] && herdr pane run "$p3" "clear; claude" >/dev/null
 echo "demo ready: ask each agent something small so they show as working"

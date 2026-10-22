@@ -19,7 +19,7 @@ rows() {
     case $st in D*) icon=$(fg "$R_red" ✗) ;; A*) icon=$(fg "$R_green" +) ;; *) icon=$(fg "$R_yellow" ●) ;; esac
     [ "$add" = - ] && add=bin && del=bin
     printf '%s\t%s  %s %s  %s\n' "$path" "$icon" "$(fg "$R_green" "$(printf '%5s' "+$add")")" \
-      "$(fg "$R_red" "$(printf '%5s' "−$del")")" "$path"
+      "$(fg "$R_red" "$(printf '%5s' "-$del")")" "$path"
   done
   # new files git does not track yet
   git ls-files --others --exclude-standard | while read -r path; do

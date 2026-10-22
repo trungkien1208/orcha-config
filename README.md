@@ -2,6 +2,8 @@
 
 *A calm cup of terminal for your coding agents.*
 
+![orcha: Claude and Codex side by side, projects grouped in the sidebar, the task and its state in the header](docs/images/hero.png)
+
 orcha turns [Ghostty](https://ghostty.org) + [herdr](https://github.com/herdrdev/herdr) + [Claude Code](https://claude.com/claude-code) into a cozy workspace for running Claude, Codex and Cursor agents side by side. The name is orca + herdr, and also matcha.
 
 - **Soft pastel themes** in six palettes (Dark Rosé, Matcha, Catppuccin, Tokyo Night, Gruvbox, Nord). Ghostty, herdr, every popup and the Claude plugin all use the same palette.
@@ -24,6 +26,8 @@ orcha turns [Ghostty](https://ghostty.org) + [herdr](https://github.com/herdrdev
   - a pomodoro timer
   - the plan limit of the focused agent's account
   - the weather and the time
+![Cmd+I: every file the agents changed, with its diff](docs/images/changes.png)
+
 - **Sidebar** with agents grouped by project and the real Claude, Codex and Cursor logos. Tabs name themselves after what runs in them.
 - **Several Claude accounts that share one chat history.** For example, start a chat on `work`, then use `oc personal --continue` when its limit runs out.
 - **Claude Code extras:**
@@ -93,6 +97,8 @@ Run `orcha` with nothing after it, or press **`Cmd+,`** in herdr, to open the se
 🔷  Azure DevOps    No
 🌐  Language        English
 ```
+
+![The settings menu](docs/images/settings.png)
 
 Pick a row to change it. The change is applied at once, and Esc goes back. The commands below do the same things for people who prefer typing.
 

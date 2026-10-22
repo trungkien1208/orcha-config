@@ -45,7 +45,7 @@ def menu(question, rows, hint="", preview=None, esc="first"):
     if hint:
         args.append(f"--header={hint}")
     if preview:
-        args += [f"--preview={preview}", "--preview-window=right,55%,border-left"]
+        args += [f"--preview={preview}", "--preview-window=right,55%,border-left,wrap"]
     r = subprocess.run(args, input="".join(f"{i}\t{label}\n" for i, label in rows),
                        capture_output=True, text=True, env=env)
     out = r.stdout.strip()
@@ -247,7 +247,7 @@ def ask_palette(cfg):
     for name in o.palette_names():
         p = o.palette(dict(cfg, palette=name, accent=""))
         if p.get("native"):
-            rows.append((name, f"○○○○○○  {T['p_default']}"))
+            rows.append((name, f"○○○○○○  {T['p_default'].split(':')[0]}"))
             continue
         swatch = "".join(o.fg(p[k], "●") for k in ("accent", "red", "green", "yellow", "blue", "magenta"))
         rows.append((name, f"{swatch}  {p['name']}"))

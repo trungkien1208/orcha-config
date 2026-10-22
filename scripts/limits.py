@@ -51,9 +51,14 @@ GREEN, YELLOW, RED = P["green"], P["yellow"], P["red"]
 fg = o.fg
 
 
+DEMO = os.path.exists(os.path.join(o.CONFIG_DIR, "demo"))  # screenshots: no real emails
+
+
 def email(acct):
     """Signed-in email of an account, or None (only the email is read)."""
     cfg = ACCOUNTS[acct]
+    if DEMO:
+        return "you@example.com" if cfg["kind"] != "claude" or not cfg.get("dir") else "me@example.com"
     try:
         if cfg["kind"] == "claude":
             d = o.claude_dir(cfg)

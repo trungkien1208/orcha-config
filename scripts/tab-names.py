@@ -25,7 +25,9 @@ import orchalib as o  # noqa: E402
 
 CFG = o.load_config()
 T = o.strings(CFG["lang"])
-STATE = os.path.join(o.CACHE, "tab-names.json")
+# one state file per herdr session (herdr --session ...): each names its own tabs
+_SESSION = os.path.basename(os.path.dirname(os.environ.get("HERDR_SOCKET_PATH", ""))) or "default"
+STATE = os.path.join(o.CACHE, f"tab-names-{_SESSION if _SESSION != 'herdr' else 'default'}.json")
 MAX = 24
 SHELLS = {"zsh", "bash", "sh", "fish", "-zsh", "login"}
 LOGOS = CFG["widgets"]["logos"]

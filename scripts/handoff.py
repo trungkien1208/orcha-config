@@ -19,6 +19,9 @@ import subprocess
 import sys
 import time
 
+# the app that runs this pane (orcha or herdr), else whichever is on PATH
+HERDR = os.environ.get("HERDR_BIN_PATH") or "herdr"
+
 HOME = os.path.expanduser("~")
 OUT_DIR = os.path.join(HOME, ".cache", "orcha", "handoff")
 # keep the notes readable in one go
@@ -26,7 +29,7 @@ MAX_CHARS = {"full": 120_000, "summary": 60_000}
 
 
 def herdr(*args):
-    out = subprocess.run(["herdr", *args], capture_output=True, text=True, timeout=10).stdout
+    out = subprocess.run([HERDR, *args], capture_output=True, text=True, timeout=10).stdout
     return json.loads(out)["result"]
 
 
@@ -149,7 +152,7 @@ def main():
     new_pane = split["pane"]["pane_id"]
     prompt = f"Read the hand-off notes in {path} and continue the work they describe."
     run = {"codex": "codex", "claude": "claude"}[target]
-    subprocess.run(["herdr", "pane", "run", new_pane, f"{run} {json.dumps(prompt)}"], capture_output=True)
+    subprocess.run([HERDR, "pane", "run", new_pane, f"{run} {json.dumps(prompt)}"], capture_output=True)
 
 
 if __name__ == "__main__":

@@ -31,6 +31,9 @@ import sys
 import time
 from datetime import datetime
 
+# the app that runs this pane (orcha or herdr), else whichever is on PATH
+HERDR = os.environ.get("HERDR_BIN_PATH") or "herdr"
+
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "lib"))
 import orchalib as o  # noqa: E402
 
@@ -231,14 +234,14 @@ def pane_account():
     if not pane:
         return None
     try:
-        got = json.loads(subprocess.run(["herdr", "pane", "get", pane], capture_output=True, text=True,
+        got = json.loads(subprocess.run([HERDR, "pane", "get", pane], capture_output=True, text=True,
                                         timeout=5).stdout)["result"]["pane"]
         kind = got.get("agent")
         if kind in ("codex", "cursor"):
             return next((a for a, c in ACCOUNTS.items() if c["kind"] == kind), None)
         if kind != "claude":
             return None
-        info = json.loads(subprocess.run(["herdr", "pane", "process-info", "--pane", pane], capture_output=True,
+        info = json.loads(subprocess.run([HERDR, "pane", "process-info", "--pane", pane], capture_output=True,
                                          text=True, timeout=5).stdout)["result"]["process_info"]
         found = None
         for p in info.get("foreground_processes", []):
@@ -401,7 +404,7 @@ def cmd_open(acct):
     """Open this account in a new pane next to the current one, continuing the last chat."""
     cfg = ACCOUNTS[acct]
     cwd = os.environ.get("HERDR_ACTIVE_PANE_CWD") or o.HOME
-    split = ["herdr", "pane", "split", "--current", "--direction", "right", "--cwd", cwd]
+    split = [HERDR, "pane", "split", "--current", "--direction", "right", "--cwd", cwd]
     d = o.claude_dir(cfg) if cfg["kind"] == "claude" else None
     if d:
         link_shared(d)
@@ -416,7 +419,7 @@ def cmd_open(acct):
     run = {"claude": "claude --continue || claude",
            "codex": "codex resume --last || codex",
            "cursor": "cursor-agent resume || cursor-agent"}[cfg["kind"]]
-    subprocess.run(["herdr", "pane", "run", pane, run], capture_output=True)
+    subprocess.run([HERDR, "pane", "run", pane, run], capture_output=True)
 
 
 WINDOW_TAGS = {"session": "5H", "weekly": "WEEK", "monthly": "MONTH"}
@@ -448,7 +451,7 @@ def cmd_switch(acct, pane):
     another account (`--resume <session id>`, shared history)."""
     cfg = ACCOUNTS[acct]
     try:
-        got = json.loads(subprocess.run(["herdr", "pane", "get", pane], capture_output=True, text=True,
+        got = json.loads(subprocess.run([HERDR, "pane", "get", pane], capture_output=True, text=True,
                                         timeout=5).stdout)["result"]["pane"]
     except Exception:
         sys.exit(T["lim_open_failed"])
@@ -466,17 +469,17 @@ def cmd_switch(acct, pane):
         run = "cursor-agent resume"
     # Ctrl+C twice leaves Claude Code and Codex; then the shell runs the resume
     for _ in range(2):
-        subprocess.run(["herdr", "pane", "send-keys", pane, "ctrl+c"], capture_output=True)
+        subprocess.run([HERDR, "pane", "send-keys", pane, "ctrl+c"], capture_output=True)
         time.sleep(0.4)
     time.sleep(1.0)
-    subprocess.run(["herdr", "pane", "run", pane, run], capture_output=True)
+    subprocess.run([HERDR, "pane", "run", pane, run], capture_output=True)
     cmd_select(acct)
 
 
 def cmd_login_pane(acct):
     """`login` in a new pane next to the focused one (orcha's SIGN IN)."""
     pane = os.environ.get("HERDR_ACTIVE_PANE_ID")
-    split = ["herdr", "pane", "split", "--direction", "right"]
+    split = [HERDR, "pane", "split", "--direction", "right"]
     split += ["--pane", pane] if pane else ["--current"]
     out = subprocess.run(split, capture_output=True, text=True).stdout
     try:
@@ -484,7 +487,7 @@ def cmd_login_pane(acct):
     except Exception:
         sys.exit(T["lim_open_failed"])
     me = os.path.realpath(__file__)
-    subprocess.run(["herdr", "pane", "run", new, f"{me} login {acct}"], capture_output=True)
+    subprocess.run([HERDR, "pane", "run", new, f"{me} login {acct}"], capture_output=True)
 
 
 def first_pane_id(obj):
@@ -508,7 +511,7 @@ def cmd_new(acct, workspace, cwd):
     """orcha's NEW: a new tab in the project, running this account's agent."""
     cfg = ACCOUNTS[acct]
     kind = cfg["kind"]
-    create = ["herdr", "tab", "create", "--workspace", workspace, "--cwd", cwd,
+    create = [HERDR, "tab", "create", "--workspace", workspace, "--cwd", cwd,
               "--label", cfg.get("label") or acct, "--focus"]
     d = o.claude_dir(cfg) if kind == "claude" else None
     if d:
@@ -522,7 +525,7 @@ def cmd_new(acct, workspace, cwd):
     if not pane:
         sys.exit(T["lim_open_failed"] + ": " + out[:200])
     run = {"claude": "claude", "codex": "codex", "cursor": "cursor-agent"}[kind]
-    subprocess.run(["herdr", "pane", "run", pane, run], capture_output=True)
+    subprocess.run([HERDR, "pane", "run", pane, run], capture_output=True)
     cmd_select(acct)
 
 

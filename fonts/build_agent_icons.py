@@ -1,5 +1,5 @@
-"""Build "Agent Icons": a tiny TTF with the Claude, OpenAI and Cursor logos at
-private-use codepoints, so a terminal can draw them as text (one color, any fg).
+"""Build "Agent Icons": a tiny TTF with the Claude, OpenAI and Cursor logos and
+the orcha whale at private-use codepoints, so a terminal can draw them as text (one color, any fg).
 
 usage: python build_agent_icons.py <logos dir> <out.ttf>
 """
@@ -21,6 +21,8 @@ GLYPHS = {
     "claude": ("claude.svg", 0x100000, False),
     "openai": ("openai.svg", 0x100001, False),
     "cursor": ("cursor.svg", 0x100002, True),
+    # orcha's own icon (ours, shipped in this folder): a whale in a matcha bowl
+    "orcha": ("orcha.svg", 0x100003, True),
 }
 
 

@@ -1,6 +1,6 @@
 #!/bin/sh
 # orcha in one line (macOS):
-#   curl -fsSL https://raw.githubusercontent.com/trungkien1208/orcha/main/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/trungkien1208/orcha-config/main/install.sh | sh
 # Clones orcha to ~/.orcha (or $ORCHA_DIR), or updates it, then starts `orcha setup`.
 set -e
 DIR=${ORCHA_DIR:-$HOME/.orcha}
@@ -9,7 +9,7 @@ command -v git >/dev/null || { echo "orcha needs git first: xcode-select --insta
 if [ -d "$DIR/.git" ]; then
   git -C "$DIR" pull --ff-only --quiet
 else
-  git clone --depth 1 --quiet https://github.com/trungkien1208/orcha "$DIR"
+  git clone --depth 1 --quiet https://github.com/trungkien1208/orcha-config "$DIR"
 fi
 # setup asks questions: read the answers from the terminal, not from this pipe
 exec "$DIR/bin/orcha" setup < /dev/tty

@@ -49,13 +49,13 @@ Everything is a widget that you can turn on or off. The UI comes in English or T
 macOS, in a terminal:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/trungkien1208/orcha/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/trungkien1208/orcha-config/main/install.sh | sh
 ```
 
 This puts orcha in `~/.orcha` and starts the setup. If you would rather clone it yourself:
 
 ```sh
-git clone https://github.com/trungkien1208/orcha ~/.orcha && ~/.orcha/bin/orcha setup
+git clone https://github.com/trungkien1208/orcha-config ~/.orcha && ~/.orcha/bin/orcha setup
 ```
 
 Ghostty is optional. herdr and orcha run in any terminal (iTerm2, Terminal, WezTerm, Kitty...), and setup offers to install Ghostty if you don't have it. Without Ghostty, the `Cmd` shortcuts become `Ctrl+B` and then a key (`Ctrl+B f` to find a file, `Ctrl+B d` for changes, `Ctrl+B ,` for settings). The theme, font, cursor trail and the real agent logos come only with Ghostty.
@@ -82,7 +82,7 @@ Restart Ghostty, then run `herdr`. To change anything, run `orcha setup` again. 
 `orcha setup` offers to install it for you. To install it by hand, run this at a Claude Code prompt:
 
 ```
-/plugin install orcha --marketplace trungkien1208/orcha
+/plugin install orcha --marketplace trungkien1208/orcha-config
 ```
 
 ## Settings

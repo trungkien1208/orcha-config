@@ -88,6 +88,52 @@ AGENTS = {
     "crush": ("crush", "Crush", "✧"),
 }
 LIMIT_KINDS = ("claude", "codex", "cursor")
+# where agent installers put their command when it is not on PATH yet
+AGENT_DIRS = ("~/.local/bin", "~/.claude/local", "/opt/homebrew/bin", "/usr/local/bin",
+              "~/.npm-global/bin", "~/.bun/bin", "~/.volta/bin", "~/.cargo/bin")
+
+
+def agent_path(cmd):
+    """The agent's command: on PATH, else in a usual install folder."""
+    import shutil
+    found = shutil.which(cmd)
+    if found:
+        return found
+    for folder in AGENT_DIRS:
+        path = os.path.join(os.path.expanduser(folder), cmd)
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return None
+
+
+def installed_agents():
+    return [aid for aid, (cmd, _, _) in AGENTS.items() if agent_path(cmd)]
+
+
+def claude_email(folder=None):
+    """The signed-in email of a Claude config folder (~/.claude by default)."""
+    path = os.path.join(folder, ".claude.json") if folder else os.path.join(HOME, ".claude.json")
+    try:
+        with open(path) as fh:
+            return (json.load(fh).get("oauthAccount") or {}).get("emailAddress") or ""
+    except (OSError, ValueError):
+        return ""
+
+
+def with_detected_accounts(accounts):
+    """`accounts` plus one for each of Claude / Codex / Cursor installed but
+    not set up yet, so a new agent shows up without running setup again."""
+    have = {a["kind"] for a in accounts}
+    out = list(accounts)
+    for kind in LIMIT_KINDS:
+        if kind in have or not agent_path(AGENTS[kind][0]):
+            continue
+        if kind == "claude":
+            out.append({"id": "claude-main", "kind": "claude", "label": "Claude",
+                        "email": claude_email(), "dir": None})
+        else:
+            out.append({"id": kind, "kind": kind, "label": AGENTS[kind][1], "email": "", "dir": None})
+    return out
 # Widget bundles for setup; "custom" toggles them one by one.
 BUNDLES = {
     "focus": ["claude_colors", "task", "changes", "limits", "clock", "pomodoro", "sidebar_groups", "logos", "tab_names"],

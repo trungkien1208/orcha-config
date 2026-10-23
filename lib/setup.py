@@ -115,15 +115,11 @@ def ask_ghostty():
 
 
 def installed_agents():
-    return [aid for aid, (cmd, _, _) in o.AGENTS.items() if shutil.which(cmd)]
+    return o.installed_agents()
 
 
 def claude_email(folder):
-    try:
-        with open(os.path.join(folder, ".claude.json") if folder else os.path.join(o.HOME, ".claude.json")) as fh:
-            return (json.load(fh).get("oauthAccount") or {}).get("emailAddress") or ""
-    except (OSError, ValueError):
-        return ""
+    return o.claude_email(folder)
 
 
 def name_for(email, taken):

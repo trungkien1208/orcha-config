@@ -41,7 +41,7 @@ import orchalib as o  # noqa: E402
 CFG = o.load_config()
 T = o.strings(CFG["lang"])
 P = o.palette(CFG)
-ACCOUNTS = {a["id"]: a for a in CFG["accounts"]}
+ACCOUNTS = {a["id"]: a for a in o.with_detected_accounts(CFG["accounts"])}
 CACHE_DIR = os.path.join(o.CACHE, "limits")
 SELECTED_FILE = os.path.join(o.CONFIG_DIR, "selected-account")
 

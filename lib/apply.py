@@ -403,6 +403,9 @@ def remove_codex_hooks():
                         if not any("/claude/hooks/orcha-" in h.get("command", "") for h in g.get("hooks", []))]
         if not hooks[event]:
             del hooks[event]
+    if not hooks and set(data) <= {"hooks"} and not os.path.exists(CODEX_HOOKS + ".pre-orcha"):
+        os.remove(CODEX_HOOKS)  # orcha made it: nothing else in it
+        return
     write(CODEX_HOOKS, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
 
 
@@ -448,6 +451,8 @@ def remove_claude_hooks():
                         if not any("/claude/hooks/orcha-" in h.get("command", "") for h in g.get("hooks", []))]
         if not hooks[event]:
             del hooks[event]
+    if "hooks" in settings and not hooks:
+        del settings["hooks"]
     write(CLAUDE_SETTINGS, json.dumps(settings, indent=2, ensure_ascii=False) + "\n")
 
 

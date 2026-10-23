@@ -512,6 +512,16 @@ def cmd_open(acct):
 WINDOW_TAGS = {"session": "5H", "weekly": "WEEK", "monthly": "MONTH"}
 
 
+def signed_in(acct):
+    """There is a sign-in for this account (maybe with an expired access token)."""
+    kind = ACCOUNTS[acct]["kind"]
+    if kind == "claude":
+        return bool(kc_read(claude_service(acct)))
+    if kind == "codex":
+        return os.path.exists(os.path.join(o.HOME, ".codex", "auth.json"))
+    return email(acct) is not None
+
+
 def cmd_json():
     """[{id, kind, label, email, current, error, windows: [{key, label, left, reset}]}]
     `left` is the % left of the window; `current` is the focused agent's account
@@ -529,7 +539,9 @@ def cmd_json():
                                 "reset": until(reset) if reset else None})
         out.append({"id": acct, "kind": cfg["kind"], "label": cfg.get("label") or acct,
                     "email": email(acct), "current": acct == cur,
-                    "error": d.get("error"), "windows": windows})
+                    "error": d.get("error"), "windows": windows,
+                    # an expired access token still signs in (the agent refreshes it)
+                    "signed_in": signed_in(acct)})
     print(json.dumps(out))
 
 

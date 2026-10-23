@@ -3,7 +3,7 @@
 
   handoff.py <pane> <agent> <mode>
 
-agent: codex | claude.  mode: full (the whole conversation) | summary (the
+agent: codex | claude | cursor.  mode: full (the whole conversation) | summary (the
 new agent summarizes the notes first, then continues).
 
 The old agent is not asked for anything, so this works when it is out of
@@ -140,7 +140,7 @@ def notes(pane, target, mode):
 
 
 def main():
-    if len(sys.argv) != 4 or sys.argv[2] not in ("codex", "claude") or sys.argv[3] not in ("full", "summary"):
+    if len(sys.argv) != 4 or sys.argv[2] not in ("codex", "claude", "cursor") or sys.argv[3] not in ("full", "summary"):
         sys.exit(__doc__)
     pane, target, mode = sys.argv[1:]
     cwd, text = notes(pane, target, mode)
@@ -151,7 +151,7 @@ def main():
     split = herdr("pane", "split", "--pane", pane, "--direction", "right", "--cwd", cwd)
     new_pane = split["pane"]["pane_id"]
     prompt = f"Read the hand-off notes in {path} and continue the work they describe."
-    run = {"codex": "codex", "claude": "claude"}[target]
+    run = {"codex": "codex", "claude": "claude", "cursor": "cursor-agent"}[target]
     subprocess.run([HERDR, "pane", "run", new_pane, f"{run} {json.dumps(prompt)}"], capture_output=True)
 
 

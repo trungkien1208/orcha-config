@@ -12,8 +12,10 @@
 herdr=${HERDR_BIN_PATH:-herdr}
 command -v "$herdr" >/dev/null 2>&1 || exit 0
 input=$(cat)
-event=$(printf '%s' "$input" | jq -r '.hook_event_name // ""')
-tool=$(printf '%s' "$input" | jq -r '.tool_name // ""')
+# one jq for both fields (tab separated)
+fields=$(printf '%s' "$input" | jq -r '[.hook_event_name // "", .tool_name // ""] | @tsv')
+event=${fields%%	*}
+tool=${fields#*	}
 stage=""
 case $event in
   SessionStart|UserPromptSubmit)
@@ -44,5 +46,11 @@ case $event in
     esac ;;
 esac
 [ -n "$stage" ] || exit 0
+# tool after tool in the same stage: nothing new to tell (a new prompt always reports)
+last="${TMPDIR:-/tmp}/orcha-stage-$(printf '%s' "$HERDR_PANE_ID" | tr -c '[:alnum:]_-' '_')"
+if [ "$event" = PreToolUse ] && [ "$(cat "$last" 2>/dev/null)" = "$stage" ]; then
+  exit 0
+fi
+printf '%s' "$stage" > "$last" 2>/dev/null
 "$herdr" pane report-metadata "$HERDR_PANE_ID" --source orcha-stage --token "stage=$stage" >/dev/null 2>&1 &
 exit 0

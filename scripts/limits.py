@@ -13,6 +13,7 @@
   limits.py switch <id> <pane>   continue that pane's conversation on another account
   limits.py login-pane <id>      sign that account in, in a new pane
   limits.py new <id> <workspace> <cwd>   start that account's agent in a new tab
+  limits.py activate <id>        make that Claude account the one every Claude session uses
 
 Accounts come from `accounts` in ~/.config/orcha/config.json.
 Claude: Anthropic's usage endpoint, with the account's own sign-in from the
@@ -43,6 +44,93 @@ P = o.palette(CFG)
 ACCOUNTS = {a["id"]: a for a in CFG["accounts"]}
 CACHE_DIR = os.path.join(o.CACHE, "limits")
 SELECTED_FILE = os.path.join(o.CONFIG_DIR, "selected-account")
+
+# ---------- one Claude login for every session (like Orca)
+# Every Claude session reads the default sign-in ("Claude Code-credentials"
+# in the Keychain, the account shown from ~/.claude.json). `activate` puts an
+# account's sign-in there, so running sessions move with it, no restart. The
+# sign-in it replaces (Claude may have refreshed it) is kept first in
+# "orcha-claude-<id>", so that account still works when it comes back.
+# Secrets only ever travel on stdin, hex encoded, never in argv.
+DEFAULT_SERVICE = "Claude Code-credentials"
+ACTIVE_FILE = os.path.join(o.CONFIG_DIR, "claude-active")
+PROFILE_DIR = os.path.join(o.CONFIG_DIR, "claude-accounts")
+
+
+def own_service(cfg):
+    """The Keychain item Claude itself keeps for an account's config folder."""
+    d = o.claude_dir(cfg)
+    return DEFAULT_SERVICE + ("-" + hashlib.sha256(d.encode()).hexdigest()[:8] if d else "")
+
+
+def kept_service(acct):
+    return f"orcha-claude-{acct}"
+
+
+def kc_read(service):
+    r = subprocess.run(["security", "find-generic-password", "-s", service, "-w"],
+                       capture_output=True, text=True, timeout=10)
+    return r.stdout.rstrip("\n") if r.returncode == 0 and r.stdout.strip() else None
+
+
+def kc_account(service):
+    """The item's account attribute (Claude writes the user name there)."""
+    r = subprocess.run(["security", "find-generic-password", "-s", service],
+                       capture_output=True, text=True, timeout=10)
+    m = re.search(r'"acct"<blob>="([^"]*)"', r.stdout)
+    return m.group(1) if m else os.environ.get("USER", "")
+
+
+def kc_write(service, account, secret):
+    hexed = secret.encode().hex()
+    cmd = f'add-generic-password -U -s "{service}" -a "{account}" -X {hexed}\n'
+    r = subprocess.run(["security", "-i"], input=cmd, capture_output=True, text=True, timeout=10)
+    if r.returncode != 0:
+        raise RuntimeError("keychain write failed")
+
+
+def claude_accounts():
+    return [a for a, c in ACCOUNTS.items() if c["kind"] == "claude"]
+
+
+def active_claude():
+    """The Claude account in the default sign-in: the one `activate` put
+    there, else the account that uses ~/.claude itself."""
+    try:
+        with open(ACTIVE_FILE) as fh:
+            a = fh.read().strip()
+        if a in ACCOUNTS:
+            return a
+    except OSError:
+        pass
+    return next((a for a in claude_accounts() if not o.claude_dir(ACCOUNTS[a])), None)
+
+
+def claude_profile(acct):
+    """An account's oauthAccount (its email etc.) as last seen."""
+    try:
+        with open(os.path.join(PROFILE_DIR, acct + ".json")) as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        pass
+    d = o.claude_dir(ACCOUNTS[acct])
+    if d:
+        try:
+            with open(os.path.join(d, ".claude.json")) as fh:
+                return json.load(fh).get("oauthAccount")
+        except (OSError, ValueError):
+            pass
+    return None
+
+
+def claude_service(acct):
+    """Where an account's sign-in is now: the default item when active, else
+    the copy orcha kept, else Claude's own item for its folder."""
+    if acct == active_claude():
+        return DEFAULT_SERVICE
+    if kc_read(kept_service(acct)):
+        return kept_service(acct)
+    return own_service(ACCOUNTS[acct])
 CACHE_TTL = 120
 # the agent logos of the Agent Icons font, else a symbol
 LOGO = ({"claude": "\U00100000", "codex": "\U00100001", "cursor": "\U00100002"} if CFG["widgets"]["logos"]
@@ -68,10 +156,10 @@ def email(acct):
         return "you@example.com" if cfg["kind"] != "claude" or not cfg.get("dir") else "me@example.com"
     try:
         if cfg["kind"] == "claude":
-            d = o.claude_dir(cfg)
-            path = os.path.join(d, ".claude.json") if d else os.path.join(o.HOME, ".claude.json")
-            with open(path) as fh:
-                return (json.load(fh).get("oauthAccount") or {}).get("emailAddress")
+            if acct == active_claude():
+                with open(os.path.join(o.HOME, ".claude.json")) as fh:
+                    return (json.load(fh).get("oauthAccount") or {}).get("emailAddress")
+            return (claude_profile(acct) or {}).get("emailAddress")
         if cfg["kind"] == "cursor":
             with open(os.path.join(o.HOME, ".cursor", "cli-config.json")) as fh:
                 return (json.load(fh).get("authInfo") or {}).get("email")
@@ -114,10 +202,7 @@ def iso_ts(s):
 # ---------- fetchers: {"session": (pct, reset_ts), "weekly": (...), "note": str} or {"error": str}
 
 def claude_limits(cfg):
-    service = "Claude Code-credentials"
-    d = o.claude_dir(cfg)
-    if d:
-        service += "-" + hashlib.sha256(d.encode()).hexdigest()[:8]
+    service = claude_service(cfg["id"])
     try:
         raw = subprocess.run(["security", "find-generic-password", "-s", service, "-w"],
                              capture_output=True, text=True, timeout=10).stdout
@@ -255,8 +340,10 @@ def pane_account():
             if cfg["kind"] != "claude":
                 continue
             d = o.claude_dir(cfg)
-            if (found and d and os.path.realpath(d) == found) or (not found and not d):
+            if found and d and os.path.realpath(d) == found:
                 return a
+        if not found:
+            return active_claude()
     except Exception:
         pass
     return None
@@ -447,9 +534,13 @@ def cmd_json():
 
 
 def cmd_switch(acct, pane):
-    """Stop the agent in `pane` and continue the same conversation there on
-    another account (`--resume <session id>`, shared history)."""
+    """Continue `pane`'s conversation on another account. Claude: every
+    session moves at once (`activate`, no restart). Others: stop the agent
+    and resume the same conversation there."""
     cfg = ACCOUNTS[acct]
+    if cfg["kind"] == "claude":
+        cmd_activate(acct)
+        return
     try:
         got = json.loads(subprocess.run([HERDR, "pane", "get", pane], capture_output=True, text=True,
                                         timeout=5).stdout)["result"]["pane"]
@@ -513,10 +604,9 @@ def cmd_new(acct, workspace, cwd):
     kind = cfg["kind"]
     create = [HERDR, "tab", "create", "--workspace", workspace, "--cwd", cwd,
               "--label", cfg.get("label") or acct, "--focus"]
-    d = o.claude_dir(cfg) if kind == "claude" else None
-    if d:
-        link_shared(d)
-        create += ["--env", f"CLAUDE_CONFIG_DIR={d}"]
+    if kind == "claude":
+        # one Claude sign-in for every session: this account becomes it
+        cmd_activate(acct)
     out = subprocess.run(create, capture_output=True, text=True).stdout
     try:
         pane = first_pane_id(json.loads(out)["result"])
@@ -526,6 +616,46 @@ def cmd_new(acct, workspace, cwd):
         sys.exit(T["lim_open_failed"] + ": " + out[:200])
     run = {"claude": "claude", "codex": "codex", "cursor": "cursor-agent"}[kind]
     subprocess.run([HERDR, "pane", "run", pane, run], capture_output=True)
+    cmd_select(acct)
+
+
+def cmd_activate(acct):
+    """Every Claude session moves to this account (no restart)."""
+    if ACCOUNTS[acct]["kind"] != "claude":
+        sys.exit("activate: not a Claude account")
+    current = active_claude()
+    if current == acct:
+        return
+    source = kc_read(kept_service(acct)) or kc_read(own_service(ACCOUNTS[acct]))
+    if not source:
+        sys.exit(T["lim_err_signin"])
+    account_attr = kc_account(DEFAULT_SERVICE)
+    os.makedirs(PROFILE_DIR, exist_ok=True)
+    claude_json = os.path.join(o.HOME, ".claude.json")
+    with open(claude_json) as fh:
+        state = json.load(fh)
+    if current:
+        # keep the live sign-in (maybe refreshed since) and its profile first
+        live = kc_read(DEFAULT_SERVICE)
+        if live:
+            kc_write(kept_service(current), account_attr, live)
+        if state.get("oauthAccount"):
+            with open(os.path.join(PROFILE_DIR, current + ".json"), "w") as fh:
+                json.dump(state["oauthAccount"], fh)
+    kc_write(DEFAULT_SERVICE, account_attr, source)
+    profile = claude_profile(acct)
+    if profile:
+        state["oauthAccount"] = profile
+        tmp = claude_json + ".orcha-tmp"
+        with open(tmp, "w") as fh:
+            json.dump(state, fh, indent=2)
+        os.replace(tmp, claude_json)
+    with open(ACTIVE_FILE, "w") as fh:
+        fh.write(acct + "\n")
+    try:
+        os.remove(os.path.join(CACHE_DIR, acct + ".json"))
+    except OSError:
+        pass
     cmd_select(acct)
 
 
@@ -546,6 +676,8 @@ def main():
         cmd_list()
     elif cmd == "json":
         cmd_json()
+    elif cmd == "activate" and len(args) > 1 and args[1] in ACCOUNTS:
+        cmd_activate(args[1])
     elif cmd == "new" and len(args) > 3 and args[1] in ACCOUNTS:
         cmd_new(args[1], args[2], args[3])
     elif cmd == "switch" and len(args) > 2 and args[1] in ACCOUNTS:

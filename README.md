@@ -2,6 +2,8 @@
 
 *A calm cup of terminal for your coding agents.*
 
+> **Looking for the orcha app?** It lives at [trungkien1208/orcha](https://github.com/trungkien1208/orcha). This repo holds its extras: fuel and account scripts, hand-off, themes, the logo font and the Claude Code plugin. The app's README walks you through installing both.
+
 ![orcha: Claude and Codex side by side, projects grouped in the sidebar, the task and its state in the header](docs/images/hero.png)
 
 orcha turns [Ghostty](https://ghostty.org) + [herdr](https://github.com/herdrdev/herdr) + [Claude Code](https://claude.com/claude-code) into a cozy workspace for running Claude, Codex and Cursor agents side by side. The name is orca + herdr, and also matcha.
@@ -75,7 +77,7 @@ Setup asks three or four things: your language, **Quick** or **Custom**, a color
 - Azure DevOps work items
 - a widget bundle: 🎯 Focus, ✨ Everything, 🍃 Minimal, or picking them one by one
 
-Restart Ghostty, then run `herdr`. To change anything, run `orcha setup` again. Every menu starts on what you have now.
+Restart Ghostty, then run `orcha` (or `herdr` if you only use the extras). To change anything, run `orcha setup` again. Every menu starts on what you have now.
 
 ### Claude Code plugin
 

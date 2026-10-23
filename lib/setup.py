@@ -72,8 +72,16 @@ def say(text, color="accent", bold=False):
 
 # ---------- what is on this machine
 
+def app_installed():
+    """The orcha app (a real binary at ~/.local/bin/orcha, not our link)."""
+    path = os.path.join(o.HOME, ".local", "bin", "orcha")
+    return os.path.isfile(path) and not os.path.islink(path)
+
+
 def missing_tools():
-    return [brew for cmd, brew in TOOLS if not shutil.which(cmd)]
+    # the orcha app replaces herdr
+    skip = {"herdr"} if app_installed() else set()
+    return [brew for cmd, brew in TOOLS if cmd not in skip and not shutil.which(cmd)]
 
 
 def ensure_tools():
@@ -344,7 +352,8 @@ def bootstrap():
     bin_dir = os.path.join(o.HOME, ".local", "bin")
     link = os.path.join(bin_dir, "orcha")
     target = os.path.join(o.ORCHA_HOME, "bin", "orcha")
-    if os.path.realpath(link) != target:
+    # never replace the orcha app: it hands `orcha setup|menu|…` to us itself
+    if not app_installed() and os.path.realpath(link) != target:
         os.makedirs(bin_dir, exist_ok=True)
         if os.path.lexists(link):
             os.remove(link)
@@ -414,6 +423,33 @@ def summary(cfg, agents, notes):
     say(T["s_change_later"], "muted")
 
 
+def app_setup():
+    """`setup --app`, run by the orcha app's installer: no questions. Finds
+    the agents, accounts, editor and git app, picks the defaults, applies."""
+    global T
+    cfg = o.load_config()
+    T = o.strings(cfg["lang"])
+    agents = installed_agents()
+    cfg["accounts"] = find_accounts(cfg, agents)
+    editors = find_editors()
+    if cfg["ide"] not in dict(editors) and editors:
+        cfg["ide"], cfg["ide_app"] = editors[0]
+    git_apps = find_git_apps()
+    if cfg["git_app"] not in git_apps:
+        cfg["git_app"] = git_apps[0] if git_apps else "none"
+    o.save_config(cfg)
+    # the stage hook reads JSON with jq
+    if not shutil.which("jq") and shutil.which("brew"):
+        subprocess.run(["brew", "install", "jq"], capture_output=True)
+    import apply
+    apply.apply(quiet=True)
+    notes = bootstrap() + install_extras(cfg)
+    names = ", ".join(o.AGENTS[a][1] for a in agents) or "none found yet"
+    print(f"  agents: {names}")
+    for n in notes:
+        print("  · " + n)
+
+
 def main():
     global T
     cfg = o.load_config()
@@ -453,6 +489,8 @@ def main():
 if __name__ == "__main__":
     if sys.argv[1:2] == ["preview"]:
         preview_palette(sys.argv[2])
+    elif sys.argv[1:2] == ["--app"]:
+        app_setup()
     elif sys.argv[1:2] == ["bundle"]:
         T = o.strings()
         preview_bundle(sys.argv[2])

@@ -225,7 +225,6 @@ def herdr_conf(cfg, p, t):
         "[ui]",
         'status_indicators = "dots"',
         "" if native else f'accent = "{p["accent"]}"',
-        "sidebar_width = 48", "sidebar_max_width = 52",
         'agent_panel_sort = "spaces"',
         'pane_borders = "always"', "pane_outer_borders = true", "pane_gaps = true",
         "show_agent_labels_on_pane_borders = true",

@@ -142,7 +142,10 @@ def ghostty_conf(cfg, p):
         f"font-size = {cfg['font']['size']}",
         "font-feature = calt", "font-feature = liga", "adjust-cell-height = 15%", "",
         "background-blur = 30", "window-padding-x = 14", "window-padding-y = 10",
-        "window-padding-balance = true", "window-padding-color = extend",
+        "window-padding-balance = true",
+        # the padding keeps the background: orcha's colored edge rows (header,
+        # buttons, status bar) must not stretch into it
+        "window-padding-color = background",
         "macos-titlebar-style = tabs", "window-save-state = always",
         "unfocused-split-opacity = 0.9", "" if p.get("native") else f"split-divider-color = {p['dim']}", "",
         "cursor-style = bar", "cursor-style-blink = true", "mouse-hide-while-typing = true", "",

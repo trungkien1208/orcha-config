@@ -128,6 +128,25 @@ def main():
             print("\n".join(o.palette_names()))
         else:
             set_and_apply("palette", args[1])
+    elif cmd == "font":
+        # orcha font "<family>" [size]
+        cfg = o.load_config()
+        if len(args) < 2:
+            print(f"{cfg['font']['family']} {cfg['font']['size']}")
+        else:
+            cfg["font"]["family"] = args[1]
+            if len(args) > 2 and args[2].isdigit():
+                cfg["font"]["size"] = int(args[2])
+            o.save_config(cfg)
+            apply.apply()
+    elif cmd == "ligatures":
+        cfg = o.load_config()
+        if len(args) < 2 or args[1] not in ("on", "off"):
+            print("on" if cfg["font"].get("ligatures", True) else "off")
+        else:
+            cfg["font"]["ligatures"] = args[1] == "on"
+            o.save_config(cfg)
+            apply.apply()
     elif cmd == "lang":
         if len(args) < 2 or args[1] not in o.languages():
             print("\n".join(o.languages()))

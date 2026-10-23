@@ -140,7 +140,9 @@ def ghostty_conf(cfg, p):
         "" if p.get("native") else "theme = orcha", "",
         f"font-family = {cfg['font']['family']}",
         f"font-size = {cfg['font']['size']}",
-        "font-feature = calt", "font-feature = liga", "adjust-cell-height = 15%", "",
+        *(["font-feature = calt", "font-feature = liga"] if cfg["font"].get("ligatures", True)
+          else ["font-feature = -calt", "font-feature = -liga", "font-feature = -dlig"]),
+        "adjust-cell-height = 15%", "",
         "background-blur = 30", "window-padding-x = 14", "window-padding-y = 10",
         "window-padding-balance = true",
         # the edge rows stretch into the padding: orcha's status bar reaches
@@ -161,7 +163,7 @@ def ghostty_conf(cfg, p):
                 "custom-shader-animation = true"]
     if w["logos"]:
         out += ["", "# Claude / OpenAI (Codex) / Cursor logos as text (the Agent Icons font)",
-                "font-codepoint-map = U+100000-U+100002=Agent Icons"]
+                "font-codepoint-map = U+100000-U+100003=Agent Icons"]
     return "\n".join(out) + "\n"
 
 

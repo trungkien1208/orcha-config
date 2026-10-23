@@ -104,11 +104,46 @@ def uninstall():
             os.remove(os.path.join(apply.GHOSTTY_DIR, f))
         except OSError:
             pass
+    apply.remove_codex_hooks()
+    restored.append(apply.CODEX_HOOKS + " (orcha hook removed)")
+    if "--all" in sys.argv:
+        restored += remove_everything_else()
     if shutil.which("herdr"):
         subprocess.run(["herdr", "server", "reload-config"], capture_output=True)
     print("restored:\n  " + "\n  ".join(r.replace(o.HOME, "~") for r in restored))
-    print("kept: ~/.config/orcha (your answers), the zsh line in ~/.zshrc, fonts.")
-    print("Claude plugin: claude plugin uninstall orcha@orcha")
+    if "--all" not in sys.argv:
+        print("kept: ~/.config/orcha (your answers), the zsh line in ~/.zshrc, fonts.")
+        print("Claude plugin: claude plugin uninstall orcha@orcha")
+
+
+def remove_everything_else():
+    """`uninstall --all` (the orcha app's uninstaller): also the shell lines,
+    the logo font, the Claude plugin and the link to the scripts."""
+    done = []
+    zshrc = os.path.join(o.HOME, ".zshrc")
+    try:
+        with open(zshrc) as fh:
+            lines = fh.read().splitlines()
+        keep = [ln for ln in lines if not ln.rstrip().endswith("# orcha")]
+        if keep != lines:
+            with open(zshrc, "w") as fh:
+                fh.write("\n".join(keep).rstrip("\n") + "\n")
+            done.append(zshrc + " (orcha lines removed)")
+    except OSError:
+        pass
+    font = os.path.join(o.HOME, "Library", "Fonts", "AgentIcons.ttf")
+    if os.path.exists(font):
+        os.remove(font)
+        done.append(font + " (removed)")
+    if shutil.which("claude"):
+        r = subprocess.run(["claude", "plugin", "uninstall", "orcha@orcha", "--scope", "user"], capture_output=True)
+        subprocess.run(["claude", "plugin", "marketplace", "remove", "orcha"], capture_output=True)
+        if r.returncode == 0:
+            done.append("Claude plugin orcha@orcha (uninstalled)")
+    scripts = os.path.join(o.CONFIG_DIR, "scripts")
+    if os.path.islink(scripts):
+        os.remove(scripts)
+    return done
 
 
 def set_and_apply(key, value):

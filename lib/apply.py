@@ -390,6 +390,22 @@ def codex_hooks():
     return None
 
 
+def remove_codex_hooks():
+    """Takes orcha's stage hook out of ~/.codex/hooks.json, keeping the rest."""
+    try:
+        with open(CODEX_HOOKS) as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return
+    hooks = data.get("hooks", {})
+    for event in list(hooks):
+        hooks[event] = [g for g in hooks[event]
+                        if not any("/claude/hooks/orcha-" in h.get("command", "") for h in g.get("hooks", []))]
+        if not hooks[event]:
+            del hooks[event]
+    write(CODEX_HOOKS, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+
+
 def claude_theme(on):
     """Claude Code in orcha's colors: its "dark-ansi" theme draws with the
     terminal's 16 colors, which are the palette's. The theme it had before is

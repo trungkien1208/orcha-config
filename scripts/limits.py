@@ -12,6 +12,7 @@
   limits.py json          every account and its fuel as JSON (orcha's FUEL and accounts popup)
   limits.py switch <id> <pane>   continue that pane's conversation on another account
   limits.py login-pane <id>      sign that account in, in a new pane
+  limits.py add <name>           add a Claude account (oc <name>) and sign it in
   limits.py new <id> <workspace> <cwd>   start that account's agent in a new tab
   limits.py activate <id>        make that Claude account the one every Claude session uses
 
@@ -22,6 +23,7 @@ into its newest session log. Cursor: the usage summary of cursor.com.
 Tokens are never printed or refreshed here, and reach curl on stdin only.
 """
 import base64
+import fcntl
 import glob
 import hashlib
 import json
@@ -123,15 +125,60 @@ def claude_profile(acct):
     return None
 
 
+# A pane started in an account's own folder (CLAUDE_CONFIG_DIR) reads that
+# folder's item, not the default one. Switching such a pane puts the new
+# account's sign-in into that item; this file remembers which account each
+# folder item holds now ({service: account}).
+SLOTS_FILE = os.path.join(o.CONFIG_DIR, "claude-slots.json")
+
+
+def dir_service(d):
+    """The Keychain item Claude reads for config folder `d` (as Claude hashes it)."""
+    return DEFAULT_SERVICE + ("-" + hashlib.sha256(d.encode()).hexdigest()[:8] if d else "")
+
+
+def read_slots():
+    try:
+        with open(SLOTS_FILE) as fh:
+            slots = json.load(fh)
+        return {k: v for k, v in slots.items() if v in ACCOUNTS}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_slots(slots):
+    os.makedirs(o.CONFIG_DIR, exist_ok=True)
+    tmp = SLOTS_FILE + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(slots, fh)
+    os.replace(tmp, SLOTS_FILE)
+
+
+def slot_owner(service):
+    """The account whose sign-in is in a folder's item now."""
+    slots = read_slots()
+    if service in slots:
+        return slots[service]
+    return next((a for a in claude_accounts() if own_service(ACCOUNTS[a]) == service), None)
+
+
 def claude_service(acct):
     """Where an account's sign-in is now: the default item when active, else
-    the copy orcha kept, else Claude's own item for its folder."""
+    a folder item it was switched into, else the copy orcha kept, else
+    Claude's own item for its folder."""
     if acct == active_claude():
         return DEFAULT_SERVICE
+    lent = next((svc for svc, a in read_slots().items() if a == acct), None)
+    if lent:
+        return lent
     if kc_read(kept_service(acct)):
         return kept_service(acct)
     return own_service(ACCOUNTS[acct])
 CACHE_TTL = 120
+# a request that failed for a while (no network, a timeout): ask again after
+# this; rate limited (HTTP 429): wait longer. The last numbers stay meanwhile.
+RETRY_AFTER = 300
+RATE_LIMIT_RETRY_AFTER = 900
 # the agent logos of the Agent Icons font, else a symbol
 LOGO = ({"claude": "\U00100000", "codex": "\U00100001", "cursor": "\U00100002"} if CFG["widgets"]["logos"]
         else {k: v[2] for k, v in o.AGENTS.items()})
@@ -220,10 +267,11 @@ def claude_limits(cfg):
                             "https://api.anthropic.com/api/oauth/usage"],
                            input=curl_cfg, capture_output=True, text=True, timeout=20)
         if r.returncode != 0:
-            return {"error": f"{T['lim_err_request']} ({r.stderr.strip()[:80]})"}
+            return {"error": f"{T['lim_err_request']} ({r.stderr.strip()[:80]})",
+                    "transient": True, "rate_limited": "error: 429" in r.stderr}
         data = json.loads(r.stdout)
     except Exception as e:
-        return {"error": f"{T['lim_err_request']} ({e})"}
+        return {"error": f"{T['lim_err_request']} ({e})", "transient": True}
     out = {}
     for key, name in (("five_hour", "session"), ("seven_day", "weekly")):
         w = data.get(key) or {}
@@ -281,24 +329,66 @@ def cursor_limits(_cfg):
         data = json.loads(r.stdout)
         plan = data["individualUsage"]["plan"]
     except Exception as e:
-        return {"error": f"{T['lim_err_request']} ({e})"}
+        return {"error": f"{T['lim_err_request']} ({e})", "transient": True}
     return {"monthly": (float(plan.get("totalPercentUsed", 0)), iso_ts(data["billingCycleEnd"])),
             "note": T["lim_cursor_note"].format(plan=data.get("membershipType", "?"),
                                                 auto=f"{plan.get('autoPercentUsed', 0):.0f}",
                                                 api=f"{plan.get('apiPercentUsed', 0):.0f}")}
 
 
+def read_cache(path):
+    """(data, age in seconds), or (None, None)."""
+    try:
+        with open(path) as fh:
+            return json.load(fh), time.time() - os.path.getmtime(path)
+    except (OSError, ValueError):
+        return None, None
+
+
+def retry_at(path):
+    try:
+        with open(path) as fh:
+            return float(fh.read().strip() or 0)
+    except (OSError, ValueError):
+        return 0.0
+
+
 def get(acct, fresh=False):
+    """The account's limits, cached for CACHE_TTL. A request that fails for a
+    while (rate limited, offline) keeps the last numbers and backs off, so the
+    fuel gauge does not flip to an error every few minutes."""
     os.makedirs(CACHE_DIR, exist_ok=True)
     path = os.path.join(CACHE_DIR, acct + ".json")
-    if not fresh and os.path.exists(path) and time.time() - os.path.getmtime(path) < CACHE_TTL:
-        with open(path) as fh:
-            return json.load(fh)
-    cfg = ACCOUNTS[acct]
-    data = {"claude": claude_limits, "codex": codex_limits, "cursor": cursor_limits}[cfg["kind"]](cfg)
-    with open(path, "w") as fh:
-        json.dump(data, fh)
-    return data
+    retry = path + ".retry"
+    cached, age = read_cache(path)
+    if not fresh and cached is not None and age < CACHE_TTL:
+        return cached
+    if not fresh and cached is not None and retry_at(retry) > time.time():
+        return cached
+    # one request at a time, however many orcha windows ask
+    with open(path + ".lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        cached, age = read_cache(path)
+        if not fresh and cached is not None and age < CACHE_TTL:
+            return cached
+        if not fresh and cached is not None and retry_at(retry) > time.time():
+            return cached
+        cfg = ACCOUNTS[acct]
+        data = {"claude": claude_limits, "codex": codex_limits, "cursor": cursor_limits}[cfg["kind"]](cfg)
+        if data.pop("transient", False):
+            wait = RATE_LIMIT_RETRY_AFTER if data.pop("rate_limited", False) else RETRY_AFTER
+            with open(retry, "w") as fh:
+                fh.write(str(time.time() + wait))
+            if cached is not None and "error" not in cached:
+                return cached
+        else:
+            try:
+                os.remove(retry)
+            except OSError:
+                pass
+        with open(path, "w") as fh:
+            json.dump(data, fh)
+        return data
 
 
 def selected():
@@ -310,6 +400,18 @@ def selected():
     except OSError:
         pass
     return next(iter(ACCOUNTS), None)
+
+
+def pane_config_dir(info):
+    """CLAUDE_CONFIG_DIR of the Claude running in a pane (its process info),
+    exactly as Claude sees it, or None for the default ~/.claude."""
+    for p in info.get("foreground_processes", []):
+        env = subprocess.run(["ps", "-E", "-ww", "-o", "command=", "-p", str(p["pid"])],
+                             capture_output=True, text=True, timeout=5).stdout
+        m = re.search(r"(?:^|\s)CLAUDE_CONFIG_DIR=(\S+)", env)
+        if m:
+            return m.group(1)
+    return None
 
 
 def pane_account():
@@ -328,14 +430,12 @@ def pane_account():
             return None
         info = json.loads(subprocess.run([HERDR, "pane", "process-info", "--pane", pane], capture_output=True,
                                          text=True, timeout=5).stdout)["result"]["process_info"]
-        found = None
-        for p in info.get("foreground_processes", []):
-            env = subprocess.run(["ps", "-E", "-ww", "-o", "command=", "-p", str(p["pid"])],
-                                 capture_output=True, text=True, timeout=5).stdout
-            m = re.search(r"(?:^|\s)CLAUDE_CONFIG_DIR=(\S+)", env)
-            if m:
-                found = os.path.realpath(os.path.expanduser(m.group(1)))
-                break
+        found_raw = pane_config_dir(info)
+        found = os.path.realpath(os.path.expanduser(found_raw)) if found_raw else None
+        if found_raw:
+            owner = slot_owner(dir_service(found_raw))
+            if owner:
+                return owner
         for a, cfg in ACCOUNTS.items():
             if cfg["kind"] != "claude":
                 continue
@@ -522,6 +622,12 @@ def signed_in(acct):
     return email(acct) is not None
 
 
+def auth_needed(data):
+    """Fuel could not use this account's sign-in (missing or expired)."""
+    err = (data.get("error") or "").lower()
+    return any(word in err for word in ("sign-in", "sign in", "signed in", "đăng nhập", "hết hạn"))
+
+
 def cmd_json():
     """[{id, kind, label, email, current, error, windows: [{key, label, left, reset}]}]
     `left` is the % left of the window; `current` is the focused agent's account
@@ -540,18 +646,91 @@ def cmd_json():
         out.append({"id": acct, "kind": cfg["kind"], "label": cfg.get("label") or acct,
                     "email": email(acct), "current": acct == cur,
                     "error": d.get("error"), "windows": windows,
-                    # an expired access token still signs in (the agent refreshes it)
-                    "signed_in": signed_in(acct)})
+                    # expired tokens still sit in the keychain; fuel cannot use them
+                    "signed_in": signed_in(acct) and not auth_needed(d)})
     print(json.dumps(out))
 
 
+def nudge_claude(config_dir):
+    """Make running Claude sessions of `config_dir` (None: ~/.claude) read
+    their sign-in again. When the folder has a .credentials.json, Claude
+    only looks at that file's modified time to notice a new sign-in, so a
+    Keychain change alone goes unseen; touching the file (content untouched)
+    makes it drop the token it holds and read the Keychain again."""
+    folder = os.path.expanduser(config_dir) if config_dir else os.path.join(o.HOME, ".claude")
+    path = os.path.join(folder, ".credentials.json")
+    if os.path.exists(path):
+        try:
+            os.utime(path, None)
+        except OSError:
+            pass
+
+
+def switch_claude_pane(acct, pane):
+    """Move a running Claude onto `acct` without a restart: put the account's
+    sign-in into the Keychain item that pane's Claude reads. Claude reads it
+    again within 30 seconds, and the chat simply goes on."""
+    try:
+        info = json.loads(subprocess.run([HERDR, "pane", "process-info", "--pane", pane],
+                                         capture_output=True, text=True,
+                                         timeout=5).stdout)["result"]["process_info"]
+        d = pane_config_dir(info)
+    except Exception:
+        d = None
+    if not d:
+        cmd_activate(acct)  # the default item: every default session moves
+        nudge_claude(None)
+        return
+    service = dir_service(d)
+    owner = slot_owner(service)
+    if owner == acct:
+        cmd_select(acct)
+        return
+    source = kc_read(claude_service(acct))
+    if not source:
+        sys.exit(T["lim_err_signin"])
+    account_attr = kc_account(service)
+    live = kc_read(service)
+    if owner and live:
+        # keep the sign-in being replaced (maybe refreshed since) for its account
+        kc_write(kept_service(owner), account_attr, live)
+    kc_write(service, account_attr, source)
+    slots = read_slots()
+    native = next((a for a in claude_accounts() if own_service(ACCOUNTS[a]) == service), None)
+    if acct == native:
+        slots.pop(service, None)
+    else:
+        slots[service] = acct
+    write_slots(slots)
+    # the folder's profile shows who is signed in
+    profile = claude_profile(acct)
+    state_path = os.path.join(os.path.expanduser(d), ".claude.json")
+    if profile and os.path.exists(state_path):
+        try:
+            with open(state_path) as fh:
+                state = json.load(fh)
+            state["oauthAccount"] = profile
+            tmp = state_path + ".orcha-tmp"
+            with open(tmp, "w") as fh:
+                json.dump(state, fh, indent=2)
+            os.replace(tmp, state_path)
+        except (OSError, ValueError):
+            pass
+    try:
+        os.remove(os.path.join(CACHE_DIR, acct + ".json"))
+    except OSError:
+        pass
+    nudge_claude(d)
+    cmd_select(acct)
+
+
 def cmd_switch(acct, pane):
-    """Continue `pane`'s conversation on another account. Claude: every
-    session moves at once (`activate`, no restart). Others: stop the agent
-    and resume the same conversation there."""
+    """Continue `pane`'s conversation on another account. Claude: the running
+    session moves to the account without a restart (`switch_claude_pane`).
+    Others: stop the agent and resume the same conversation there."""
     cfg = ACCOUNTS[acct]
     if cfg["kind"] == "claude":
-        cmd_activate(acct)
+        switch_claude_pane(acct, pane)
         return
     try:
         got = json.loads(subprocess.run([HERDR, "pane", "get", pane], capture_output=True, text=True,
@@ -577,6 +756,25 @@ def cmd_switch(acct, pane):
     time.sleep(1.0)
     subprocess.run([HERDR, "pane", "run", pane, run], capture_output=True)
     cmd_select(acct)
+
+
+def cmd_add(name):
+    """Add a Claude account named `name` and sign it in, in a new pane."""
+    name = re.sub(r"[^a-z0-9_-]+", "-", (name or "").strip().lower()).strip("-")
+    if not name:
+        sys.exit("need a name like personal or work")
+    cfg = o.load_config()
+    accounts = cfg.setdefault("accounts", [])
+    taken = {a.get("id") for a in accounts}
+    acct_id = f"claude-{name}"
+    if acct_id in taken or name in {a.get("id", "").removeprefix("claude-") for a in accounts}:
+        sys.exit(f"{acct_id} is already an account")
+    acct = {"id": acct_id, "kind": "claude", "label": f"Claude · {name}", "email": "",
+            "dir": f"~/.ai-accounts/claude/{name}"}
+    accounts.append(acct)
+    o.save_config(cfg)
+    ACCOUNTS[acct_id] = acct
+    cmd_login_pane(acct_id)
 
 
 def cmd_login_pane(acct):
@@ -698,6 +896,8 @@ def main():
         d = o.claude_dir(ACCOUNTS[args[1]])
         if d:
             link_shared(d)
+    elif cmd == "add" and len(args) > 1:
+        cmd_add(args[1])
     elif cmd in ("show", "select", "login", "login-pane", "open") and len(args) > 1 and args[1] in ACCOUNTS:
         {"show": cmd_show, "select": cmd_select, "login": cmd_login, "login-pane": cmd_login_pane,
          "open": cmd_open}[cmd](args[1])

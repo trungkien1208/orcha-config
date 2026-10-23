@@ -35,6 +35,10 @@ LOGOS = CFG["widgets"]["logos"]
 # Claude / OpenAI / Cursor logos; the others (and all without the font) get a symbol
 FONT_LOGO = {"claude": "\U00100000", "codex": "\U00100001", "cursor": "\U00100002"}
 AGENT = {a: ((FONT_LOGO.get(a) if LOGOS else None) or icon, name) for a, (_, name, icon) in o.AGENTS.items()}
+# A label that starts with one of these was written by this script. The saved
+# copy can go missing; the mark is enough to keep owning it, so a Cursor pane
+# does not stay stuck with the Codex logo.
+OWNED_MARKS = set(FONT_LOGO.values()) | {icon for _, _, icon in o.AGENTS.values() if icon} | {"▶", "●"}
 STATE_LABEL = {"working": T["st_working"], "blocked": T["st_blocked"], "done": T["st_done"], "idle": T["st_idle"]}
 # processes that are background noise, never a tab's name
 NOISE = {"caffeinate", "node", "python", "python3"}
@@ -107,10 +111,11 @@ def main():
     for p in panes:
         by_tab.setdefault(p["tab_id"], []).append(p)
 
-    # each agent shows as "<logo> Claude", with its state words in your language
+    # the name only. The pane border and the tab each draw the logo once;
+    # putting it in the name as well showed two icons.
     for p in agents:
-        logo, name = AGENT.get(p["agent"], (None, None))
-        want = f"{logo} {name}" if logo else None
+        _logo, name = AGENT.get(p["agent"], (None, None))
+        want = name or None
         if want and p.get("display_agent") != want:
             labels = [a for st, txt in STATE_LABEL.items() for a in ("--state-label", f"{st}={txt}")]
             subprocess.run(["herdr", "pane", "report-metadata", p["pane_id"], "--source", "orcha",
@@ -147,7 +152,12 @@ def main():
     if CFG["widgets"]["tab_names"]:
         for tab in tabs:
             tid, label = tab["tab_id"], tab.get("label", "")
-            is_ours = label == str(tab.get("number")) or label == last.get(tid)
+            previous = last.get(tid)
+            is_ours = (
+                label == str(tab.get("number"))
+                or label == previous
+                or (bool(label) and label[0] in OWNED_MARKS)
+            )
             ps = by_tab.get(tid, [])
             if not is_ours or not ps:
                 continue  # renamed by hand: leave it
